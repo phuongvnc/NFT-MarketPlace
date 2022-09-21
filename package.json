@@ -1,0 +1,31 @@
+{
+  "name": "nftmarketplace",
+  "version": "1.0.0",
+  "description": "NFT Market Place",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "deploy": "run-es6 deploy.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phuongvnc/NFT-MarketPlace.git"
+  },
+  "author": "Phuong Vo",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/phuongvnc/NFT-MarketPlace/issues"
+  },
+  "homepage": "https://github.com/phuongvnc/NFT-MarketPlace#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.7.3",
+    "@truffle/hdwallet-provider": "^2.0.14",
+    "dotenv": "^16.0.2",
+    "web3": "^1.8.0"
+  },
+  "devDependencies": {
+    "run-es6": "^1.0.2"
+  }
+}
