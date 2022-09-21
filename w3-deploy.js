@@ -1,29 +1,22 @@
-import Web3 from "web3";
-import dotenv from 'dotenv';
+export default async function deploy(contractName, args) {
+    console.log(`Start Deploying ${contractName}`);
+    const Truffle = require("./truffle-config");
+    const Web3 = require("web3");
+    const web3 = new Web3(Truffle.networks.goerli.provider);
+    const metadata = require(`./build/contracts/${contractName}.json`);
+    const accounts = await web3.eth.getAccounts();
+    const contract = new web3.eth.Contract(metadata.abi);
 
- async function deploy(contractName, args, from, gas) {
-  dotenv.config();
-  const { PROJECT_ID } = process.env;
-  const provider = `https://goerli.infura.io/v3/${PROJECT_ID}`;
-  const web3Provider = new Web3.providers.HttpProvider(provider);
-  const web3 = new Web3(web3Provider);
+    const newContractInstance = await contract
+        .deploy({
+            data: metadata.bytecode,
+            arguments: args,
+        })
+        .send({
+            from: accounts[0],
+            gas: 1500000,
+        });
 
-  console.log(`deploying ${contractName}`);
-
-  const buildPath = `./build/contracts/${contractName}.json`;
-
-  const metadata = require(buildPath);
-  const contract = new web3.eth.Contract(metadata.abi);
-
-  const newContractInstance = await contract.deploy({
-    data: metadata.bytecode,
-    arguments: args,
-  }).contractSend.send({
-    from: from,
-    gas: 1500000,
-  });
-
-  return newContractInstance.options;
+    provider.engine.stop();
+    console.log(`End Deploying ${contractName}`);
 }
-
-export default deploy;

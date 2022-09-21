@@ -2,6 +2,7 @@
 pragma solidity ^0.8.16;
 
 interface IMarketItem {
+    
     struct MarketItem {
         uint256 itemId;
         uint256 tokenId;

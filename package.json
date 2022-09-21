@@ -7,7 +7,7 @@
     "test": "test"
   },
   "scripts": {
-    "deploy": "run-es6 deploy.js"
+    "deploy": "node w3-deploy.js"
   },
   "repository": {
     "type": "git",
