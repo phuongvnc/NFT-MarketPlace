@@ -2,14 +2,13 @@
 pragma solidity ^0.8.16;
 
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
-contract NFT is Ownable, ERC721Enumerable {
+contract NFT is Ownable, ERC721Enumerable, Pausable {
     using Counters for Counters.Counter;
-    using SafeMath for uint256;
     
     string public baseURI = "";
     uint256 public limitToken;
@@ -28,10 +27,6 @@ contract NFT is Ownable, ERC721Enumerable {
             result[i] = tokenOfOwnerByIndex(owner, i);
         }
         return result;
-    }
-
-    function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal override(ERC721Enumerable) {
-        super._beforeTokenTransfer(from, to, tokenId);
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
@@ -55,6 +50,19 @@ contract NFT is Ownable, ERC721Enumerable {
         for (uint256 i = 0; i < totalTokenCount; i++) { 
             mintNft(tokenURIs_[i]);
         }
+    }
+
+    function burn(uint256 tokenId) public virtual {
+        require(_isApprovedOrOwner(_msgSender(), tokenId), "ERC721: caller is not token owner nor approved");
+        _burn(tokenId);
+    }
+    // Override Pausable
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    function unpause() public onlyOwner {
+        _unpause();
     }
 
     // Modifier
