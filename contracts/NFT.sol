@@ -50,6 +50,13 @@ contract NFT is Ownable, ERC721Enumerable {
         return newItemId;
     }
 
+    function mintNfts(string[] memory tokenURIs_) public canMintToken onlyOwner {
+        uint256 totalTokenCount = tokenURIs_.length;
+        for (uint256 i = 0; i < totalTokenCount; i++) { 
+            mintNft(tokenURIs_[i]);
+        }
+    }
+
     // Modifier
     modifier canMintToken() {
         require(_tokenIds.current() + 1 <= limitToken, "Can't mint token");

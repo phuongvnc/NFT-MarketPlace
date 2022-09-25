@@ -50,12 +50,24 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     );
 
     // Action NFT Item
-    function createMarketItem(uint256 tokenId, address nftAddress, uint256 price)
+    function createMarketItems(uint256[] memory tokenIds, address nftAddress, uint256 price)    
         external
         payable
         isSupportNFTAddress(nftAddress)
+        hasTransferApproval(nftAddress)
+    {
+        uint256 totalTokenCount = tokenIds.length;
+        for (uint256 i = 0; i < totalTokenCount; i++) { 
+            createMarketItem(tokenIds[i], nftAddress, price);
+        }
+    }
+
+    function createMarketItem(uint256 tokenId, address nftAddress, uint256 price)
+        public
+        payable
+        isSupportNFTAddress(nftAddress)
         isOnlyItemOwner(tokenId, nftAddress)
-        hasTransferApproval(tokenId, nftAddress)
+        hasTransferApproval(nftAddress)
     {
         require(price > 0, "Price must be at least 1 wei");
 
@@ -79,6 +91,18 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
             price,
             MarketItemStatus.Active
         );
+    }
+
+    function changeMarketItem(uint256 tokenId, address nftAddress, uint256 price)
+        public
+        payable
+        isSupportNFTAddress(nftAddress)
+        isItemExists(tokenId, nftAddress)
+        isOnlyItemOwner(tokenId, nftAddress)
+    {
+        require(price > 0, "Price must be at least 1 wei");
+        MarketItem storage idToMarketItem_ = _mapNFTAddressToItem[nftAddress][tokenId];
+        idToMarketItem_.price = price;
     }
 
     function buyMarketItem(uint256 tokenId, address nftAddress)
@@ -316,7 +340,7 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         _;
     }
 
-    modifier hasTransferApproval(uint256 tokenId, address nftAddress) {
+    modifier hasTransferApproval(address nftAddress) {
         require(
             IERC721(nftAddress).isApprovedForAll(_msgSender(), address(this)),
             "Market is not approved"
