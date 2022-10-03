@@ -45,11 +45,14 @@ contract NFT is Ownable, ERC721Enumerable, Pausable {
         return newItemId;
     }
 
-    function mintNfts(string[] memory tokenURIs_) public canMintToken onlyOwner {
+    function mintNfts(string[] memory tokenURIs_) public canMintToken onlyOwner returns (uint256[] memory) {
         uint256 totalTokenCount = tokenURIs_.length;
-        for (uint256 i = 0; i < totalTokenCount; i++) { 
-            mintNft(tokenURIs_[i]);
+        uint256[] memory listTokenId = new uint256[](totalTokenCount);
+        for (uint256 i = 0; i < totalTokenCount; i++) {
+            uint256 tokenId = mintNft(tokenURIs_[i]);
+            listTokenId[i] = tokenId;
         }
+        return listTokenId;
     }
 
     function burn(uint256 tokenId) public virtual {

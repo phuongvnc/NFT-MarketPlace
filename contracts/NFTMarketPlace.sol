@@ -6,17 +6,16 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "./InterfaceNFT.sol";
+import "./NewInterfaceNFT.sol";
 
 contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     using Counters for Counters.Counter;
     using EnumerableSet for EnumerableSet.AddressSet;
+    using EnumerableSet for EnumerableSet.UintSet;
 
     // Private properties
-    mapping(address => Counters.Counter) private _contractItemId;
-    mapping(address => Counters.Counter) private _contractItemsSold;
-    mapping(address => Counters.Counter) private _contractItemsCancelled;
     mapping(address => mapping(uint256 => MarketItem)) private _mapNFTAddressToItem;
+    mapping(address => EnumerableSet.UintSet) _saleTokenIds;
 
     EnumerableSet.AddressSet private _supportedNFTAddress;
     address private _newContract;
@@ -24,7 +23,6 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
 
     // Events
     event MarketItemCreated(
-        uint256 indexed itemId,
         uint256 indexed tokenId,
         address indexed nftAddress,
         address seller,
@@ -34,7 +32,6 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     );
 
     event MarketItemCancelled(
-        uint256 indexed itemId,
         uint256 indexed tokenId,
         address indexed nftAddress,
         address seller,
@@ -44,7 +41,6 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     );
 
     event MarketItemSold(
-        uint256 indexed itemId,
         uint256 indexed tokenId,
         address indexed nftAddress,
         address seller,
@@ -54,33 +50,40 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     );
 
     // Action NFT Item
-    function createMarketItem(uint256 tokenId, address nftAddress, uint256 price)
+    function createMarketItems(uint256[] memory tokenIds, address nftAddress, uint256 price)    
         external
         payable
         isSupportNFTAddress(nftAddress)
+        hasTransferApproval(nftAddress)
+    {
+        uint256 totalTokenCount = tokenIds.length;
+        for (uint256 i = 0; i < totalTokenCount; i++) { 
+            createMarketItem(tokenIds[i], nftAddress, price);
+        }
+    }
+
+    function createMarketItem(uint256 tokenId, address nftAddress, uint256 price)
+        public
+        payable
+        isSupportNFTAddress(nftAddress)
         isOnlyItemOwner(tokenId, nftAddress)
-        hasTransferApproval(tokenId, nftAddress)
+        hasTransferApproval(nftAddress)
     {
         require(price > 0, "Price must be at least 1 wei");
 
         IERC721 nft = IERC721(nftAddress);
         nft.transferFrom(msg.sender, address(this), tokenId);
 
-        _contractItemId[nftAddress].increment();
-
-        uint256 itemId = _contractItemId[nftAddress].current();
-
-        _mapNFTAddressToItem[nftAddress][itemId] = MarketItem(
-            itemId,
+        _mapNFTAddressToItem[nftAddress][tokenId] = MarketItem(
             tokenId,
             payable(msg.sender),
             payable(address(0)),
             price,
             MarketItemStatus.Active
         );
+        _saleTokenIds[nftAddress].add(tokenId);
 
         emit MarketItemCreated(
-            itemId,
             tokenId,
             nftAddress,
             msg.sender,
@@ -90,14 +93,26 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         );
     }
 
-    function buyMarketItem(uint256 itemId, address nftAddress)
+    function changeMarketItem(uint256 tokenId, address nftAddress, uint256 price)
+        public
+        payable
+        isSupportNFTAddress(nftAddress)
+        isItemExists(tokenId, nftAddress)
+        isOnlyItemOwner(tokenId, nftAddress)
+    {
+        MarketItem storage idToMarketItem_ = _mapNFTAddressToItem[nftAddress][tokenId];
+        require(price > 0, "Price must be at least 1 wei");
+        require(idToMarketItem_.status == MarketItemStatus.Active, "Price can change when item is active");
+        idToMarketItem_.price = price;
+    }
+
+    function buyMarketItem(uint256 tokenId, address nftAddress)
         external
         payable
         isSupportNFTAddress(nftAddress)
-        isItemExists(itemId, nftAddress)
+        isItemExists(tokenId, nftAddress)
         nonReentrant {
-        MarketItem storage idToMarketItem_ = _mapNFTAddressToItem[nftAddress][itemId];
-        uint256 tokenId = idToMarketItem_.tokenId;
+        MarketItem storage idToMarketItem_ = _mapNFTAddressToItem[nftAddress][tokenId];
         require(
             idToMarketItem_.status == MarketItemStatus.Active, "Item is not active"
         );
@@ -114,10 +129,8 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
 
         idToMarketItem_.owner = payable(msg.sender);
         idToMarketItem_.status = MarketItemStatus.Sold;
-        _contractItemsSold[nftAddress].increment();
 
         emit MarketItemSold(
-            itemId,
             tokenId,
             nftAddress,
             idToMarketItem_.seller,
@@ -127,25 +140,22 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         );
     }
 
-    function cancelMarketItem(uint256 itemId, address nftAddress)
+    function cancelMarketItem(uint256 tokenId, address nftAddress)
         external
         isSupportNFTAddress(nftAddress)
-        isItemExists(itemId, nftAddress)
+        isItemExists(tokenId, nftAddress)
         nonReentrant
     {
         
-        MarketItem storage idToMarketItem_ = _mapNFTAddressToItem[nftAddress][itemId];
+        MarketItem storage idToMarketItem_ = _mapNFTAddressToItem[nftAddress][tokenId];
         require(msg.sender == idToMarketItem_.seller, "Only Seller can cancel");
         require(
             idToMarketItem_.status == MarketItemStatus.Active, "Item must be active"
-        );
-        idToMarketItem_.status = MarketItemStatus.Cancelled;
-        _contractItemsCancelled[nftAddress].increment();
+        );    
         IERC721 nft = IERC721(nftAddress);
         nft.transferFrom(address(this), msg.sender, idToMarketItem_.tokenId);
 
         emit MarketItemCancelled (
-            itemId,
             idToMarketItem_.tokenId,
             nftAddress,
             idToMarketItem_.seller,
@@ -153,6 +163,9 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
             idToMarketItem_.price,
             MarketItemStatus.Cancelled
         );
+        _saleTokenIds[nftAddress].remove(tokenId);
+        delete _mapNFTAddressToItem[nftAddress][tokenId];
+
     }
 
     // Fetch NFT Item
@@ -162,17 +175,23 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         isSupportNFTAddress(nftAddress) 
         returns (MarketItem[] memory)  
     {
-        uint256 itemCount = _contractItemId[nftAddress].current();
-        uint256 unsoldItemCount = _contractItemId[nftAddress].current() -
-            _contractItemsSold[nftAddress].current() -
-            _contractItemsCancelled[nftAddress].current();
+
+        uint256 totalItemCount = _saleTokenIds[nftAddress].length();
+        uint256 itemCount = 0;
         uint256 currentIndex = 0;
 
-        MarketItem[] memory items = new MarketItem[](unsoldItemCount);
-        for (uint256 i = 0; i < itemCount; i++) {
-            if (_mapNFTAddressToItem[nftAddress][i + 1].status == MarketItemStatus.Active) {
-                uint256 currentId = i + 1;
-                MarketItem storage currentItem = _mapNFTAddressToItem[nftAddress][currentId];
+        for (uint256 i = 0; i < totalItemCount; i++) {
+            uint256 tokenId = _saleTokenIds[nftAddress].at(i);
+            if (_mapNFTAddressToItem[nftAddress][tokenId].status == MarketItemStatus.Active) {
+                itemCount += 1;
+            }
+        }
+
+        MarketItem[] memory items = new MarketItem[](itemCount);
+        for (uint256 i = 0; i < totalItemCount; i++) {
+            uint256 tokenId = _saleTokenIds[nftAddress].at(i);
+            if (_mapNFTAddressToItem[nftAddress][tokenId].status == MarketItemStatus.Active) {
+                MarketItem storage currentItem = _mapNFTAddressToItem[nftAddress][tokenId];
                 items[currentIndex] = currentItem;
                 currentIndex += 1;
             }
@@ -186,21 +205,22 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         isSupportNFTAddress(nftAddress) 
         returns (MarketItem[] memory) 
     {
-        uint256 totalItemCount = _contractItemId[nftAddress].current();
+        uint256 totalItemCount = _saleTokenIds[nftAddress].length();
         uint256 itemCount = 0;
         uint256 currentIndex = 0;
 
         for (uint256 i = 0; i < totalItemCount; i++) {
-            if (_mapNFTAddressToItem[nftAddress][i + 1].owner == sender) {
+            uint256 tokenId = _saleTokenIds[nftAddress].at(i);
+            if (_mapNFTAddressToItem[nftAddress][tokenId].owner == sender) {
                 itemCount += 1;
             }
         }
-
+  
         MarketItem[] memory items = new MarketItem[](itemCount);
         for (uint256 i = 0; i < totalItemCount; i++) {
-            if (_mapNFTAddressToItem[nftAddress][i + 1].owner == sender) {
-                uint256 currentId = i + 1;
-                MarketItem storage currentItem = _mapNFTAddressToItem[nftAddress][currentId];
+            uint256 tokenId = _saleTokenIds[nftAddress].at(i);
+            if (_mapNFTAddressToItem[nftAddress][tokenId].owner == sender) {
+                MarketItem storage currentItem = _mapNFTAddressToItem[nftAddress][tokenId];
                 items[currentIndex] = currentItem;
                 currentIndex += 1;
             }
@@ -214,21 +234,22 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         isSupportNFTAddress(nftAddress) 
         returns (MarketItem[] memory) 
     {
-        uint256 totalItemCount = _contractItemId[nftAddress].current();
+        uint256 totalItemCount = _saleTokenIds[nftAddress].length();
         uint256 itemCount = 0;
         uint256 currentIndex = 0;
 
         for (uint256 i = 0; i < totalItemCount; i++) {
-            if (_mapNFTAddressToItem[nftAddress][i + 1].seller == sender) {
+            uint256 tokenId = _saleTokenIds[nftAddress].at(i);
+            if (_mapNFTAddressToItem[nftAddress][tokenId].owner == sender) {
                 itemCount += 1;
             }
         }
 
         MarketItem[] memory items = new MarketItem[](itemCount);
         for (uint256 i = 0; i < totalItemCount; i++) {
+            uint256 tokenId = _saleTokenIds[nftAddress].at(i);
             if (_mapNFTAddressToItem[nftAddress][i + 1].seller == sender) {
-                uint256 currentId = i + 1;
-                MarketItem storage currentItem = _mapNFTAddressToItem[nftAddress][currentId];
+                MarketItem storage currentItem = _mapNFTAddressToItem[nftAddress][tokenId];
                 items[currentIndex] = currentItem;
                 currentIndex += 1;
             }
@@ -273,15 +294,16 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         for (uint256 i = 0; i < _supportedNFTAddress.length(); i++) {
 
             address nftAddress = _supportedNFTAddress.at(i);
-            uint256 nftTotalSupply = _contractItemId[nftAddress].current();
+            uint256 nftTotalSupply = _saleTokenIds[nftAddress].length();
 
             IMigration _newMarketPlace = IMigration(_newContract);
             if (!_newMarketPlace.isNFTAddressSupported(nftAddress)) {
                 _newMarketPlace.addNFTSupportAddress(nftAddress);  
             }
 
-            for (uint256 j = 1; j <= nftTotalSupply; j++) {
-                MarketItem storage item = _mapNFTAddressToItem[nftAddress][j];
+            for (uint256 j = 0; j < nftTotalSupply; j++) {
+                uint256 tokenId = _saleTokenIds[nftAddress].at(j);
+                MarketItem storage item = _mapNFTAddressToItem[nftAddress][tokenId];
                 if (_newMarketPlace.transferMarketItem(nftAddress, item)) {
                     if (item.status == MarketItemStatus.Active) {
                         IERC721 nft = IERC721(nftAddress);
@@ -298,13 +320,9 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     }
 
     function transferMarketItem(address nftAddress, MarketItem memory item) external onlyOldContract returns (bool) {
-        _contractItemId[nftAddress].increment();
-        if (item.status == MarketItemStatus.Sold) {
-            _contractItemsSold[nftAddress].increment();
-        } else if (item.status == MarketItemStatus.Cancelled) {
-            _contractItemsCancelled[nftAddress].increment();
-        }
-        _mapNFTAddressToItem[nftAddress][item.itemId] = item;
+        _saleTokenIds[nftAddress].add(item.tokenId);
+        _mapNFTAddressToItem[nftAddress][item.tokenId] = item;
+
         return true;
     }
 
@@ -323,7 +341,7 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         _;
     }
 
-    modifier hasTransferApproval(uint256 tokenId, address nftAddress) {
+    modifier hasTransferApproval(address nftAddress) {
         require(
             IERC721(nftAddress).isApprovedForAll(_msgSender(), address(this)),
             "Market is not approved"
@@ -331,8 +349,8 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         _;
     }
 
-    modifier isItemExists(uint256 id, address nftAddress) {
-        require(id <= _contractItemId[nftAddress].current() && id > 0, "Could not find item");
+    modifier isItemExists(uint256 tokenId, address nftAddress) {
+        require(_saleTokenIds[nftAddress].contains(tokenId), "Could not find item");
         _;
     }
 

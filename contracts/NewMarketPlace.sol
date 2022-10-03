@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "./InterfaceNFT.sol";
+import "./NewInterfaceNFT.sol";
 
 contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     using Counters for Counters.Counter;
