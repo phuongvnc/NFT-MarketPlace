@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "./NewInterfaceNFT.sol";
+import "./InterfaceNFT.sol";
 
 contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     using Counters for Counters.Counter;
@@ -16,6 +16,7 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     // Private properties
     mapping(address => mapping(uint256 => MarketItem)) private _mapNFTAddressToItem;
     mapping(address => EnumerableSet.UintSet) _saleTokenIds;
+    mapping(address => bool) _approver;
 
     EnumerableSet.AddressSet private _supportedNFTAddress;
     address private _newContract;
@@ -100,8 +101,9 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         isItemExists(tokenId, nftAddress)
         isOnlyItemOwner(tokenId, nftAddress)
     {
-        require(price > 0, "Price must be at least 1 wei");
         MarketItem storage idToMarketItem_ = _mapNFTAddressToItem[nftAddress][tokenId];
+        require(price > 0, "Price must be at least 1 wei");
+        require(idToMarketItem_.status == MarketItemStatus.Active, "Price can change when item is active");
         idToMarketItem_.price = price;
     }
 
@@ -261,7 +263,7 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
     receive() external payable {}
 
     // INFTSupport
-    function addNFTSupportAddress(address nftAddress_) external {
+    function addNFTSupportAddress(address nftAddress_) external isApprover {
         require(
             nftAddress_ != address(0),
             "NFTMarketplace: nftAddess is not zero"
@@ -278,6 +280,10 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
         returns (bool)
     {
         return _supportedNFTAddress.contains(nftAddress_);
+    }
+
+    function setApprover(address operator, bool approved) external onlyOwner {
+        _approver[operator] = approved;
     }
 
     // Migration contract
@@ -327,6 +333,11 @@ contract Marketplace is Ownable, ReentrancyGuard, IMigration {
 
 
     // Modifier
+    modifier isApprover() {
+        require(_approver[_msgSender()] == true || _msgSender() == owner(), "Address is not approver");
+        _;
+    } 
+
     modifier isSupportNFTAddress(address nftAddress) {
         require(_supportedNFTAddress.contains(nftAddress), "Market place is not support NFT");
         _;
